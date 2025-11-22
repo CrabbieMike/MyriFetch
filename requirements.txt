@@ -1,0 +1,5 @@
+customtkinter
+requests
+beautifulsoup4
+pillow
+urllib3

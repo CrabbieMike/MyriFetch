@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=MyriFetch
+Comment=Download ROMs from Myrient
+Exec=Myrinet
+Icon=myrient
+Categories=Utility;Network;
+Terminal=false
