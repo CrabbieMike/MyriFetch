@@ -6,8 +6,6 @@ MyriFetch is a modern, high-performance ROM manager and downloader designed spec
 
     🚀 "Hydra" Download Engine: Splits files into 4 parallel chunks (threads) to maximize bandwidth and bypass single-stream speed limits.
 
-    🖥️ Visual Browser: Automatically fetches console icons and game metadata for a visual browsing experience.
-
     📦 Bulk Queue System: Select multiple games, add them to the queue, and let it run in the background.
 
     💾 Smart Resume & Integrity: Checks file sizes and stitches parts automatically. Includes a "Cancel" feature for safe stopping.
