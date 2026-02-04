@@ -7,7 +7,8 @@ on:
 
 jobs:
   build:
-    name: Build for ${{ matrix.os }}
+    # This changes the label in the UI to "Linux-release" when running the Linux job
+    name: Build for ${{ matrix.os == 'ubuntu-latest' && 'Linux-release' || matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -22,7 +23,7 @@ jobs:
             output_name: MyriFetch.exe
             readme: README_WINDOWS.txt
             icon_file: icon.ico
-          - os: ubuntu-20.04
+          - os: ubuntu-latest  # Changed from 20.04 to latest for better availability
             artifact_name: MyriFetch-Linux-AppImage
             output_name: MyriFetch-x86_64.AppImage
             readme: README_LINUX.txt
@@ -38,7 +39,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install System Dependencies (Linux)
-        if: matrix.os == 'ubuntu-20.04'
+        if: startsWith(matrix.os, 'ubuntu')
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-tk libfuse2
@@ -59,7 +60,7 @@ jobs:
             echo "MYRIFETCH - macOS GUIDE" > dist/README_MAC.txt
             echo "=======================" >> dist/README_MAC.txt
             echo "1. Right-Click 'MyriFetch' and select 'Open'." >> dist/README_MAC.txt
-          elif [ "${{ matrix.os }}" = "ubuntu-20.04" ]; then
+          elif [[ "${{ matrix.os }}" == ubuntu* ]]; then
             echo "MYRIFETCH - LINUX GUIDE" > dist/README_LINUX.txt
             echo "=======================" >> dist/README_LINUX.txt
             echo "To run: chmod +x MyriFetch-x86_64.AppImage && ./MyriFetch-x86_64.AppImage" >> dist/README_LINUX.txt
@@ -70,7 +71,7 @@ jobs:
           fi
 
       - name: Build with PyInstaller (Windows/Mac)
-        if: matrix.os != 'ubuntu-20.04'
+        if: (!startsWith(matrix.os, 'ubuntu'))
         shell: bash
         run: |
           CTK_PATH=$(python -c "import customtkinter; import os; print(os.path.dirname(customtkinter.__file__))")
@@ -79,7 +80,7 @@ jobs:
           pyinstaller --noconsole --onefile --name "MyriFetch" --add-data "$CTK_PATH:customtkinter" $ICON_CMD MyriFetch.py
 
       - name: Build AppImage (Linux)
-        if: matrix.os == 'ubuntu-20.04'
+        if: startsWith(matrix.os, 'ubuntu')
         shell: bash
         run: |
           CTK_PATH=$(python -c "import customtkinter; import os; print(os.path.dirname(customtkinter.__file__))")
