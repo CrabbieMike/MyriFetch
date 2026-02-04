@@ -340,7 +340,12 @@ class UltimateApp(ctk.CTk):
         self.twitch = TwitchManager(self.folder_mappings.get('twitch_id', ''), self.folder_mappings.get('twitch_secret', ''))
         self.apply_saved_theme()
         super().__init__()
-        self.title("MYRIFETCH // ROM MANAGER")
+        
+        # App Info
+        self.app_version = "1.3.1"
+        self.github_url = "https://github.com/crabbiemike/MyriFetch"
+        
+        self.title(f"MYRIFETCH v{self.app_version} // ROM MANAGER")
         self.geometry("1100x850")
         self.configure(bg_color=C['bg'])
         self.session = requests.Session()
@@ -370,7 +375,8 @@ class UltimateApp(ctk.CTk):
         self.setup_main()
         threading.Thread(target=self.icon_manager, daemon=True).start()
         self.show_home()
-        self.status_txt.configure(text="Ready")
+        # Fixed version text string
+        self.status_txt.configure(text=f"v{self.app_version}")
         self.net_log("System Initialized")
         try: self.refresh_dir("") 
         except: pass
@@ -464,18 +470,28 @@ class UltimateApp(ctk.CTk):
         self.sidebar.grid(row=0, column=0, sticky='nsew')
         self.sidebar.grid_rowconfigure(7, weight=1)
         ctk.CTkLabel(self.sidebar, text="👾 MYRIFETCH", font=('Arial', 22, 'bold'), text_color='white').grid(row=0, column=0, padx=20, pady=30)
+        
         self.btn_home = self.nav_btn("Home", 1, self.show_home)
         self.btn_library = self.nav_btn("Library", 2, self.show_library)
         self.btn_browser = self.nav_btn("Browser", 3, lambda: self.show_browser())
         self.btn_bios = self.nav_btn("BIOS Files", 4, self.show_bios)
         self.btn_queue = self.nav_btn("Downloads", 5, self.show_queue)
         self.btn_settings = self.nav_btn("Settings", 6, self.show_settings)
+        
+        # Check for Updates button
+        self.btn_update = ctk.CTkButton(self.sidebar, text="Check for Updates ↗", height=32, 
+                                        fg_color=C['card'], hover_color=C['pink'], 
+                                        font=('Arial', 11, 'bold'),
+                                        command=lambda: webbrowser.open(self.github_url))
+        self.btn_update.grid(row=7, column=0, padx=20, pady=(10, 0), sticky='s')
+
         self.status_frame = ctk.CTkFrame(self.sidebar, fg_color=C['card'])
-        self.status_frame.grid(row=8, column=0, padx=20, pady=5, sticky='ew')
+        self.status_frame.grid(row=8, column=0, padx=20, pady=10, sticky='ew')
         self.status_dot = ctk.CTkLabel(self.status_frame, text="●", text_color=C['success'], font=('Arial', 16))
-        self.status_dot.pack(side='left', padx=10)
-        self.status_txt = ctk.CTkLabel(self.status_frame, text="Online", text_color=C['dim'])
+        self.status_dot.pack(side='left', padx=(10, 5))
+        self.status_txt = ctk.CTkLabel(self.status_frame, text=f"v{self.app_version}", text_color=C['dim'])
         self.status_txt.pack(side='left')
+        
         self.net_status = ctk.CTkLabel(self.sidebar, text="Net: Idle", text_color=C['dim'], font=('Consolas', 10), anchor='w')
         self.net_status.grid(row=9, column=0, padx=15, pady=(0, 10), sticky='ew')
 
@@ -519,6 +535,7 @@ class UltimateApp(ctk.CTk):
         ctk.CTkLabel(self.lib_header, text="GAME LIBRARY", font=('Arial', 20, 'bold'), text_color=C['cyan']).pack(side='left')
         self.lib_sort_var = ctk.StringVar(value="All Consoles")
         self.lib_sort_menu = ctk.CTkOptionMenu(self.lib_header, variable=self.lib_sort_var, values=['All Consoles'], command=self.render_library_grid, fg_color=C['card'], button_color=C['cyan'], button_hover_color=C['pink'], text_color='white', width=160)
+        self.lib_sort_menu.pack(side='right')
         self.lib_sort_menu.pack(side='right')
         self.lib_scroll = ctk.CTkScrollableFrame(self.frame_library, fg_color=C['card'])
         self.lib_scroll.pack(fill='both', expand=True)
@@ -1144,7 +1161,7 @@ class UltimateApp(ctk.CTk):
                 if 'myrient.erista.me' not in target:
                     req_headers.pop('Referer', None)
                     req_headers.pop('Origin', None)
-                self.after(0, lambda: self.status_txt.configure(text="Loading..."))
+                # Removed the call that updates version label to "Loading..."
                 self.net_log(f"Listing: {target[:20]}...")
                 clean_path = unquote(target)
                 url = BASE_URL + clean_path
@@ -1174,12 +1191,11 @@ class UltimateApp(ctk.CTk):
                 self.after(0, self.filter_list)
                 self.after(0, self.update_map_btn)
                 self.after(0, self.update_storage_stats)
-                self.after(0, lambda: self.status_txt.configure(text="Online"))
+                # Version text is now static, so removed the update here
                 self.net_log("Idle")
             except Exception as e:
                 self.after(0, self.hide_loader)
                 self.after(0, lambda: CustomPopup(self, "Error", f"Failed to load: {e}", ["OK"]))
-                self.after(0, lambda: self.status_txt.configure(text="Error"))
                 self.net_log("Network Error")
         threading.Thread(target=_work, daemon=True).start()
 
@@ -1564,8 +1580,6 @@ class UltimateApp(ctk.CTk):
                 if 'myrient.erista.me' not in task['url']:
                     req_headers.pop('Referer', None)
                     req_headers.pop('Origin', None)
-                
-                self.after(0, lambda: self.status_txt.configure(text="Loading..."))
                 
                 # Check Head with fallback
                 try:
