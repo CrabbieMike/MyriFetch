@@ -1,0 +1,87 @@
+name: Build MyriFetch Multi-Platform
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            artifact_name: MyriFetch-macOS
+            output_name: MyriFetch
+            readme: README_MAC.txt
+          - os: windows-latest
+            artifact_name: MyriFetch-Windows
+            output_name: MyriFetch.exe
+            readme: README_WINDOWS.txt
+          - os: ubuntu-latest
+            artifact_name: MyriFetch-Linux
+            output_name: MyriFetch
+            readme: README_LINUX.txt
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install System Dependencies (Linux Fix)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install customtkinter pillow requests beautifulsoup4 urllib3 pyinstaller
+
+      - name: Create Help Documents
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            echo "MYRIFETCH - macOS GUIDE" > dist/README_MAC.txt
+            echo "=======================" >> dist/README_MAC.txt
+            echo "1. Right-Click 'MyriFetch' and select 'Open'." >> dist/README_MAC.txt
+            echo "2. Click 'Open' on the security warning." >> dist/README_MAC.txt
+          elif [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            echo "MYRIFETCH - LINUX GUIDE" > dist/README_LINUX.txt
+            echo "=======================" >> dist/README_LINUX.txt
+            echo "If you get a 'ModuleNotFoundError: No module named tkinter':" >> dist/README_LINUX.txt
+            echo "" >> dist/README_LINUX.txt
+            echo "On Arch/Manjaro: sudo pacman -S tk" >> dist/README_LINUX.txt
+            echo "On Ubuntu/Debian: sudo apt install python3-tk" >> dist/README_LINUX.txt
+            echo "On Fedora: sudo dnf install python3-tkinter" >> dist/README_LINUX.txt
+            echo "" >> dist/README_LINUX.txt
+            echo "To run: chmod +x MyriFetch && ./MyriFetch" >> dist/README_LINUX.txt
+          elif [ "${{ matrix.os }}" = "windows-latest" ]; then
+            echo "MYRIFETCH - WINDOWS GUIDE" > dist/README_WINDOWS.txt
+            echo "=========================" >> dist/README_WINDOWS.txt
+            echo "If Windows Defender blocks the app, click 'More Info' then 'Run Anyway'." >> dist/README_WINDOWS.txt
+          fi
+
+      - name: Build with PyInstaller
+        shell: bash
+        run: |
+          CTK_PATH=$(python -c "import customtkinter; import os; print(os.path.dirname(customtkinter.__file__))")
+          pyinstaller --noconsole --onefile --name "MyriFetch" \
+          --add-data "$CTK_PATH:customtkinter" \
+          MyriFetch.py
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            dist/${{ matrix.output_name }}
+            dist/${{ matrix.readme }}
