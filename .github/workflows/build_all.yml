@@ -7,7 +7,6 @@ on:
 
 jobs:
   build:
-    # This changes the label in the UI to "Linux-release" when running the Linux job
     name: Build for ${{ matrix.os == 'ubuntu-latest' && 'Linux-release' || matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -23,7 +22,7 @@ jobs:
             output_name: MyriFetch.exe
             readme: README_WINDOWS.txt
             icon_file: icon.ico
-          - os: ubuntu-latest  # Changed from 20.04 to latest for better availability
+          - os: ubuntu-latest
             artifact_name: MyriFetch-Linux-AppImage
             output_name: MyriFetch-x86_64.AppImage
             readme: README_LINUX.txt
@@ -43,8 +42,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-tk libfuse2
+          # Using specific version tags to avoid 404s from 'continuous' builds
           wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          wget https://github.com/linuxdeploy/linuxdeploy-plugin-python/releases/download/continuous/linuxdeploy-plugin-python-x86_64.AppImage
+          wget https://github.com/linuxdeploy/linuxdeploy-plugin-python/releases/download/master/linuxdeploy-plugin-python-x86_64.AppImage
           chmod +x linuxdeploy*.AppImage
 
       - name: Install Python Dependencies
@@ -58,20 +58,37 @@ jobs:
           mkdir -p dist
           if [ "${{ matrix.os }}" = "macos-latest" ]; then
             echo "MYRIFETCH - macOS GUIDE" > dist/README_MAC.txt
-            echo "=======================" >> dist/README_MAC.txt
-            echo "1. Right-Click 'MyriFetch' and select 'Open'." >> dist/README_MAC.txt
           elif [[ "${{ matrix.os }}" == ubuntu* ]]; then
             echo "MYRIFETCH - LINUX GUIDE" > dist/README_LINUX.txt
-            echo "=======================" >> dist/README_LINUX.txt
             echo "To run: chmod +x MyriFetch-x86_64.AppImage && ./MyriFetch-x86_64.AppImage" >> dist/README_LINUX.txt
           elif [ "${{ matrix.os }}" = "windows-latest" ]; then
             echo "MYRIFETCH - WINDOWS GUIDE" > dist/README_WINDOWS.txt
-            echo "=========================" >> dist/README_WINDOWS.txt
-            echo "If blocked, click 'More Info' then 'Run Anyway'." >> dist/README_WINDOWS.txt
           fi
 
-      - name: Build with PyInstaller (Windows/Mac)
-        if: (!startsWith(matrix.os, 'ubuntu'))
+      - name: Build with PyInstaller
+        shell: bash
+        run: |
+          CTK_PATH=$(python -c "import customtkinter; import os; print(os.path.dirname(customtkinter.__file__))")
+          ICON_CMD=""
+          if [ -f "${{ matrix.icon_file }}" ]; then ICON_CMD="--icon ${{ matrix.icon_file }}"; fi
+          pyinstaller --noconsole --onefile --name "MyriFetch" --add-data "$CTK_PATH:customtkinter" $ICON_CMD MyriFetch.py
+
+      - name: Build AppImage (Linux Only)
+        if: startsWith(matrix.os, 'ubuntu')
+        shell: bash
+        run: |
+          export OUTPUT="MyriFetch-x86_64.AppImage"
+          # AppImage creation requires the icon to be present in the root or specified
+          ./linuxdeploy-x86_64.AppImage --executable dist/MyriFetch --appdir AppDir --output appimage --plugin python
+          mv MyriFetch*.AppImage dist/${{ matrix.output_name }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            dist/${{ matrix.output_name }}
+            dist/${{ matrix.readme }}
         shell: bash
         run: |
           CTK_PATH=$(python -c "import customtkinter; import os; print(os.path.dirname(customtkinter.__file__))")
