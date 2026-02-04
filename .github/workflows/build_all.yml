@@ -16,14 +16,17 @@ jobs:
             artifact_name: MyriFetch-macOS
             output_name: MyriFetch
             readme: README_MAC.txt
+            icon_file: icon.icns
           - os: windows-latest
             artifact_name: MyriFetch-Windows
             output_name: MyriFetch.exe
             readme: README_WINDOWS.txt
-          - os: ubuntu-latest
-            artifact_name: MyriFetch-Linux
-            output_name: MyriFetch
+            icon_file: icon.ico
+          - os: ubuntu-20.04
+            artifact_name: MyriFetch-Linux-AppImage
+            output_name: MyriFetch-x86_64.AppImage
             readme: README_LINUX.txt
+            icon_file: icon.png
 
     steps:
       - name: Checkout Repository
@@ -34,11 +37,14 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install System Dependencies (Linux Fix)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Install System Dependencies (Linux)
+        if: matrix.os == 'ubuntu-20.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-tk
+          sudo apt-get install -y python3-tk libfuse2
+          wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget https://github.com/linuxdeploy/linuxdeploy-plugin-python/releases/download/continuous/linuxdeploy-plugin-python-x86_64.AppImage
+          chmod +x linuxdeploy*.AppImage
 
       - name: Install Python Dependencies
         run: |
@@ -53,20 +59,60 @@ jobs:
             echo "MYRIFETCH - macOS GUIDE" > dist/README_MAC.txt
             echo "=======================" >> dist/README_MAC.txt
             echo "1. Right-Click 'MyriFetch' and select 'Open'." >> dist/README_MAC.txt
-            echo "2. Click 'Open' on the security warning." >> dist/README_MAC.txt
-          elif [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-            echo "MYRIFETCH - LINUX GUIDE" > dist/README_LINUX.txt
-            echo "=======================" >> dist/README_LINUX.txt
-            echo "If you get a 'ModuleNotFoundError: No module named tkinter':" >> dist/README_LINUX.txt
-            echo "" >> dist/README_LINUX.txt
-            echo "On Arch/Manjaro: sudo pacman -S tk" >> dist/README_LINUX.txt
-            echo "On Ubuntu/Debian: sudo apt install python3-tk" >> dist/README_LINUX.txt
-            echo "On Fedora: sudo dnf install python3-tkinter" >> dist/README_LINUX.txt
-            echo "" >> dist/README_LINUX.txt
-            echo "To run: chmod +x MyriFetch && ./MyriFetch" >> dist/README_LINUX.txt
+          elif [ "${{ matrix.os }}" = "ubuntu-20.04" ]; then
+            echo "MYRIFETCH - LINUX APPIMAGE GUIDE" > dist/README_LINUX.txt
+            echo "================================" >> dist/README_LINUX.txt
+            echo "To run this AppImage: chmod +x MyriFetch-x86_64.AppImage && ./MyriFetch-x86_64.AppImage" >> dist/README_LINUX.txt
           elif [ "${{ matrix.os }}" = "windows-latest" ]; then
             echo "MYRIFETCH - WINDOWS GUIDE" > dist/README_WINDOWS.txt
             echo "=========================" >> dist/README_WINDOWS.txt
+            echo "If Windows Defender blocks the app, click 'More Info' then 'Run Anyway'." >> dist/README_WINDOWS.txt
+          fi
+
+      - name: Build with PyInstaller (Windows/Mac)
+        if: matrix.os != 'ubuntu-20.04'
+        shell: bash
+        run: |
+          CTK_PATH=$(python -c "import customtkinter; import os; print(os.path.dirname(customtkinter.__file__))")
+          
+          # Base command
+          CMD="pyinstaller --noconsole --onefile --name MyriFetch --add-data $CTK_PATH:customtkinter"
+          
+          # Add icon if it exists in the repo
+          if [ -f "${{ matrix.icon_file }}" ]; then
+            CMD="$CMD --icon ${{ matrix.icon_file }}"
+          fi
+          
+          $CMD MyriFetch.py
+
+      - name: Build AppImage (Linux)
+        if: matrix.os == 'ubuntu-20.04'
+        shell: bash
+        run: |
+          CTK_PATH=$(python -c "import customtkinter; import os; print(os.path.dirname(customtkinter.__file__))")
+          pyinstaller --noconsole --onefile --name MyriFetch --add-data "$CTK_PATH:customtkinter" MyriFetch.py
+          
+          # Wrapping with linuxdeploy
+          export OUTPUT="MyriFetch-x86_64.AppImage"
+          
+          # Base linuxdeploy command
+          LCMD="./linuxdeploy-x86_64.AppImage --executable dist/MyriFetch --appdir AppDir --output appimage"
+          
+          # Add icon if it exists
+          if [ -f "icon.png" ]; then
+            LCMD="$LCMD --icon icon.png"
+          fi
+          
+          $LCMD
+          mv MyriFetch*.AppImage dist/${{ matrix.output_name }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            dist/${{ matrix.output_name }}
+            dist/${{ matrix.readme }}
             echo "If Windows Defender blocks the app, click 'More Info' then 'Run Anyway'." >> dist/README_WINDOWS.txt
           fi
 
