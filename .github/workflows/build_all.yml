@@ -41,7 +41,7 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-tk libfuse2
+          sudo apt-get install -y python3-tk libfuse2 imagemagick
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           wget -q https://github.com/niess/linuxdeploy-plugin-python/releases/download/continuous/linuxdeploy-plugin-python-x86_64.AppImage
           chmod +x linuxdeploy*.AppImage
@@ -76,27 +76,28 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu')
         shell: bash
         run: |
-          # Create the required .desktop file so linuxdeploy doesn't crash
+          # Resize icon to 256x256 to meet linuxdeploy standards
+          convert ${{ matrix.icon_file }} -resize 256x256! linux_icon.png
+
+          # Create the required .desktop file
           echo "[Desktop Entry]" > MyriFetch.desktop
           echo "Type=Application" >> MyriFetch.desktop
           echo "Name=MyriFetch" >> MyriFetch.desktop
           echo "Exec=MyriFetch" >> MyriFetch.desktop
-          echo "Icon=icon" >> MyriFetch.desktop
+          echo "Icon=linux_icon" >> MyriFetch.desktop
           echo "Categories=Utility;" >> MyriFetch.desktop
 
-          # Use LDAI_OUTPUT as requested by the tool logs
           export LDAI_OUTPUT="${{ matrix.output_name }}"
           
-          # Run linuxdeploy with the desktop and icon flags
+          # Run linuxdeploy with the resized icon and desktop file
           ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \
             --executable dist/MyriFetch \
             --desktop-file MyriFetch.desktop \
-            --icon-file ${{ matrix.icon_file }} \
+            --icon-file linux_icon.png \
             --appdir AppDir \
             --output appimage \
             --plugin python
             
-          # Ensure the file is in the dist folder for the upload step
           mv MyriFetch*.AppImage dist/${{ matrix.output_name }}
 
       - name: Upload Artifact
