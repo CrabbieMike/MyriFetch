@@ -43,19 +43,6 @@ if not os.path.exists(APP_DATA):
     except Exception as e:
         print(f"Failed to create config folder: {e}")
 
-CONFIG_FILE = os.path.join(APP_DATA, 'myrient_ultimate.json')
-ICON_DIR = os.path.join(APP_DATA, 'icons')
-BASE_URL = 'https://myrient.erista.me/files/'
-NUM_THREADS = 4
-
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': '*/*',
-    'Referer': 'https://myrient.erista.me/',
-    'Origin': 'https://myrient.erista.me',
-    'Connection': 'keep-alive'
-}
-
 # Mappings
 LB_NAMES = {
     'PlayStation 3': 'Sony Playstation 3',
@@ -102,6 +89,19 @@ SHORT_NAMES = {
     'Nintendo 3DS': '3DS'
 }
 
+CONFIG_FILE = os.path.join(APP_DATA, 'myrient_ultimate.json')
+ICON_DIR = os.path.join(APP_DATA, 'icons')
+BASE_URL = 'https://myrient.erista.me/files/'
+NUM_THREADS = 4
+
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': '*/*',
+    'Referer': 'https://myrient.erista.me/',
+    'Origin': 'https://myrient.erista.me',
+    'Connection': 'keep-alive'
+}
+
 THEMES = {
     'Cyber Dark': {
         'bg': '#09090b', 'card': '#18181b', 'cyan': '#00f2ff',
@@ -123,6 +123,26 @@ THEMES = {
 
 C = THEMES['Cyber Dark'].copy()
 
+class RAManager:
+    def __init__(self, username, api_key):
+        self.username = username
+        self.api_key = api_key
+        self.base_url = "https://retroachievements.org/API/"
+
+    def get_user_summary(self):
+        if not self.username or not self.api_key: 
+            return "Missing Credentials", None
+        params = {'z': self.username, 'y': self.api_key, 'u': self.username}
+        try:
+            r = requests.get(f"{self.base_url}API_GetUserSummary.php", params=params, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                if "error" in data:
+                    return data["error"], None
+                return None, data
+            return f"Server Error ({r.status_code})", None
+        except Exception as e:
+            return str(e), None
 
 class TwitchManager:
     def __init__(self, client_id, client_secret):
@@ -338,6 +358,7 @@ class UltimateApp(ctk.CTk):
     def __init__(self):
         self.load_config()
         self.twitch = TwitchManager(self.folder_mappings.get('twitch_id', ''), self.folder_mappings.get('twitch_secret', ''))
+        self.ra = RAManager(self.folder_mappings.get('ra_user', ''), self.folder_mappings.get('ra_key', ''))
         self.apply_saved_theme()
         super().__init__()
         
@@ -354,8 +375,10 @@ class UltimateApp(ctk.CTk):
         self.file_cache = []
         self.filtered_cache = []
         self.download_list = []
+        self.pending_stage_queue = [] # Master staging queue
         self.is_downloading = False
         self.cancel_download = False
+        self.is_paused = False
         self.console_icons = {}
         self.current_page = 0
         self.items_per_page = 100
@@ -375,7 +398,6 @@ class UltimateApp(ctk.CTk):
         self.setup_main()
         threading.Thread(target=self.icon_manager, daemon=True).start()
         self.show_home()
-        # Fixed version text string
         self.status_txt.configure(text=f"v{self.app_version}")
         self.net_log("System Initialized")
         try: self.refresh_dir("") 
@@ -468,7 +490,7 @@ class UltimateApp(ctk.CTk):
     def setup_sidebar(self):
         self.sidebar = ctk.CTkFrame(self, width=220, corner_radius=0, fg_color='#101014')
         self.sidebar.grid(row=0, column=0, sticky='nsew')
-        self.sidebar.grid_rowconfigure(7, weight=1)
+        self.sidebar.grid_rowconfigure(8, weight=1)
         ctk.CTkLabel(self.sidebar, text="👾 MYRIFETCH", font=('Arial', 22, 'bold'), text_color='white').grid(row=0, column=0, padx=20, pady=30)
         
         self.btn_home = self.nav_btn("Home", 1, self.show_home)
@@ -476,24 +498,24 @@ class UltimateApp(ctk.CTk):
         self.btn_browser = self.nav_btn("Browser", 3, lambda: self.show_browser())
         self.btn_bios = self.nav_btn("BIOS Files", 4, self.show_bios)
         self.btn_queue = self.nav_btn("Downloads", 5, self.show_queue)
-        self.btn_settings = self.nav_btn("Settings", 6, self.show_settings)
+        self.btn_ra = self.nav_btn("Achievements", 6, self.show_achievements)
+        self.btn_settings = self.nav_btn("Settings", 7, self.show_settings)
         
-        # Check for Updates button
         self.btn_update = ctk.CTkButton(self.sidebar, text="Check for Updates ↗", height=32, 
                                         fg_color=C['card'], hover_color=C['pink'], 
                                         font=('Arial', 11, 'bold'),
                                         command=lambda: webbrowser.open(self.github_url))
-        self.btn_update.grid(row=7, column=0, padx=20, pady=(10, 0), sticky='s')
+        self.btn_update.grid(row=8, column=0, padx=20, pady=(10, 0), sticky='s')
 
         self.status_frame = ctk.CTkFrame(self.sidebar, fg_color=C['card'])
-        self.status_frame.grid(row=8, column=0, padx=20, pady=10, sticky='ew')
+        self.status_frame.grid(row=9, column=0, padx=20, pady=10, sticky='ew')
         self.status_dot = ctk.CTkLabel(self.status_frame, text="●", text_color=C['success'], font=('Arial', 16))
         self.status_dot.pack(side='left', padx=(10, 5))
         self.status_txt = ctk.CTkLabel(self.status_frame, text=f"v{self.app_version}", text_color=C['dim'])
         self.status_txt.pack(side='left')
         
         self.net_status = ctk.CTkLabel(self.sidebar, text="Net: Idle", text_color=C['dim'], font=('Consolas', 10), anchor='w')
-        self.net_status.grid(row=9, column=0, padx=15, pady=(0, 10), sticky='ew')
+        self.net_status.grid(row=10, column=0, padx=15, pady=(0, 10), sticky='ew')
 
     def nav_btn(self, text, row, cmd):
         btn = ctk.CTkButton(self.sidebar, text=text, height=40, fg_color='transparent', anchor='w', font=('Arial', 13, 'bold'), hover_color='#27272a', command=cmd)
@@ -525,6 +547,8 @@ class UltimateApp(ctk.CTk):
         self.frame_queue = ctk.CTkFrame(self.main_area, fg_color='transparent')
         self.frame_settings = ctk.CTkFrame(self.main_area, fg_color='transparent')
         self.frame_bios = ctk.CTkFrame(self.main_area, fg_color='transparent')
+        self.frame_achievements = ctk.CTkFrame(self.main_area, fg_color='transparent')
+        
         ctk.CTkLabel(self.frame_home, text="QUICK JUMP", font=('Arial', 16, 'bold'), text_color=C['dim']).pack(anchor='w', pady=10)
         self.grid_consoles = ctk.CTkScrollableFrame(self.frame_home, fg_color='transparent')
         self.grid_consoles.pack(fill='both', expand=True)
@@ -535,7 +559,6 @@ class UltimateApp(ctk.CTk):
         ctk.CTkLabel(self.lib_header, text="GAME LIBRARY", font=('Arial', 20, 'bold'), text_color=C['cyan']).pack(side='left')
         self.lib_sort_var = ctk.StringVar(value="All Consoles")
         self.lib_sort_menu = ctk.CTkOptionMenu(self.lib_header, variable=self.lib_sort_var, values=['All Consoles'], command=self.render_library_grid, fg_color=C['card'], button_color=C['cyan'], button_hover_color=C['pink'], text_color='white', width=160)
-        self.lib_sort_menu.pack(side='right')
         self.lib_sort_menu.pack(side='right')
         self.lib_scroll = ctk.CTkScrollableFrame(self.frame_library, fg_color=C['card'])
         self.lib_scroll.pack(fill='both', expand=True)
@@ -576,7 +599,7 @@ class UltimateApp(ctk.CTk):
         self.btn_next.pack(side='right')
         dl_frame = ctk.CTkFrame(self.frame_browser, fg_color='transparent')
         dl_frame.pack(fill='x')
-        self.btn_dl = ctk.CTkButton(dl_frame, text="DOWNLOAD SELECTED", height=50, fg_color=C['cyan'], text_color='black', font=('Arial', 14, 'bold'), command=self.add_to_queue)
+        self.btn_dl = ctk.CTkButton(dl_frame, text="DOWNLOAD SELECTED [0]", height=50, fg_color=C['cyan'], text_color='black', font=('Arial', 14, 'bold'), command=self.add_to_queue)
         self.btn_dl.pack(side='left', fill='x', expand=True, padx=(0,5))
         self.btn_dl_all = ctk.CTkButton(dl_frame, text="⬇ Download All Listed", height=50, fg_color=C['card'], text_color='white', font=('Arial', 14, 'bold'), hover_color=C['pink'], command=self.add_all_to_queue)
         self.btn_dl_all.pack(side='right', fill='x', expand=True, padx=(5,0))
@@ -585,8 +608,19 @@ class UltimateApp(ctk.CTk):
         self.queue_controls.pack(fill='x', pady=5)
         self.lbl_speed = ctk.CTkLabel(self.queue_controls, text="IDLE", font=('Consolas', 14), text_color=C['cyan'])
         self.lbl_speed.pack(side='left')
-        self.btn_cancel = ctk.CTkButton(self.queue_controls, text="Cancel Download", fg_color=C['pink'], width=120, height=30, command=self.cancel_current, state='disabled')
-        self.btn_cancel.pack(side='right')
+        
+        # UI Elements for Batches and Stop
+        self.btn_pause = ctk.CTkButton(self.queue_controls, text="Pause Download", fg_color=C['card'], width=120, height=30, command=self.toggle_pause, state='disabled')
+        self.btn_pause.pack(side='right', padx=(5, 0))
+        self.btn_stop = ctk.CTkButton(self.queue_controls, text="Stop Download", fg_color=C['pink'], width=120, height=30, command=self.cancel_current, state='disabled')
+        self.btn_stop.pack(side='right')
+
+        # Batch Status Labels
+        self.lbl_batches_left = ctk.CTkLabel(self.queue_controls, text="Batches Left: 0", font=('Arial', 12, 'bold'), text_color=C['pink'])
+        self.lbl_batches_left.pack(side='right', padx=10)
+        self.lbl_total_left = ctk.CTkLabel(self.queue_controls, text="Total Left: 0", font=('Arial', 12, 'bold'), text_color=C['cyan'])
+        self.lbl_total_left.pack(side='right', padx=10)
+        
         self.progress_bar = ctk.CTkProgressBar(self.frame_queue, height=15, progress_color=C['cyan'])
         self.progress_bar.set(0)
         self.progress_bar.pack(fill='x', pady=10)
@@ -597,7 +631,7 @@ class UltimateApp(ctk.CTk):
         self.queue_list_frame.pack(fill='both', expand=True)
         self.bind_scroll(self.queue_list_frame, self.queue_list_frame)
         ctk.CTkLabel(self.frame_settings, text="SETTINGS & PATHS", font=('Arial', 20, 'bold')).pack(anchor='w', pady=10)
-        self.settings_scroll = ctk.CTkScrollableFrame(self.frame_settings, fg_color=C['card'])
+        self.settings_scroll = ctk.CTkScrollableFrame(self.frame_settings, fg_color='transparent')
         self.settings_scroll.pack(fill='both', expand=True, pady=10)
         self.bind_scroll(self.settings_scroll, self.settings_scroll)
         self.setup_bios_ui()
@@ -696,6 +730,7 @@ class UltimateApp(ctk.CTk):
         self.frame_bios.grid_forget()
         self.frame_library.grid_forget()
         self.frame_details.grid_forget()
+        self.frame_achievements.grid_forget()
         self.search_container.grid_forget()
         self.btn_home.configure(fg_color='transparent', text_color='white')
         self.btn_library.configure(fg_color='transparent', text_color='white')
@@ -703,6 +738,7 @@ class UltimateApp(ctk.CTk):
         self.btn_queue.configure(fg_color='transparent', text_color='white')
         self.btn_settings.configure(fg_color='transparent', text_color='white')
         self.btn_bios.configure(fg_color='transparent', text_color='white')
+        self.btn_ra.configure(fg_color='transparent', text_color='white')
 
     def show_home(self):
         self.hide_all()
@@ -738,6 +774,71 @@ class UltimateApp(ctk.CTk):
         self.frame_library.grid(row=1, column=0, sticky='nsew')
         self.btn_library.configure(fg_color=C['cyan'], text_color='black')
         self.render_library_grid()
+
+    def show_achievements(self):
+        self.hide_all()
+        self.frame_achievements.grid(row=1, column=0, sticky='nsew')
+        self.btn_ra.configure(fg_color=C['cyan'], text_color='black')
+        self.render_achievements()
+
+    def render_achievements(self):
+        for w in self.frame_achievements.winfo_children(): w.destroy()
+        
+        # Header row with Title and Browse Button
+        header_row = ctk.CTkFrame(self.frame_achievements, fg_color='transparent')
+        header_row.pack(fill='x', pady=(10, 20))
+        
+        ctk.CTkLabel(header_row, text="RETROACHIEVEMENTS", 
+                     font=('Arial', 20, 'bold'), text_color=C['cyan']).pack(side='left', padx=5)
+        
+        # Browse Button to Myrient's RetroAchievements folder
+        ctk.CTkButton(header_row, text="Browse RA-Supported ROMs ↗", 
+                      fg_color=C['card'], hover_color=C['pink'],
+                      command=lambda: self.jump_to("RetroAchievements/")).pack(side='right', padx=5)
+        
+        if not self.ra.api_key:
+            ctk.CTkLabel(self.frame_achievements, text="Please configure your RA API Key in Settings.", 
+                         text_color=C['dim']).pack(pady=20)
+            return
+
+        loading = ctk.CTkLabel(self.frame_achievements, text="FETCHING PROFILE DATA...", font=('Arial', 14))
+        loading.pack(pady=20)
+
+        def _load():
+            error_msg, data = self.ra.get_user_summary()
+            self.after(0, lambda: loading.destroy())
+            if data:
+                self.after(0, lambda: self.draw_ra_profile(data))
+            else:
+                self.after(0, lambda e=error_msg: ctk.CTkLabel(self.frame_achievements, 
+                           text=f"Error: {e}", text_color=C['pink']).pack())
+        
+        threading.Thread(target=_load, daemon=True).start()
+
+    def draw_ra_profile(self, data):
+        profile_card = ctk.CTkFrame(self.frame_achievements, fg_color=C['card'])
+        profile_card.pack(fill='x', padx=10, pady=10)
+        
+        user_info = ctk.CTkFrame(profile_card, fg_color='transparent')
+        user_info.pack(fill='x', padx=20, pady=20)
+        
+        ctk.CTkLabel(user_info, text=data.get('User', 'Unknown'), font=('Arial', 24, 'bold'), text_color=C['cyan']).pack(side='left')
+        
+        stats_frame = ctk.CTkFrame(profile_card, fg_color='transparent')
+        stats_frame.pack(fill='x', padx=20, pady=(0, 20))
+        
+        stats = [
+            ("Points", data.get('TotalPoints', '0')),
+            ("Ratio", data.get('RetroRatio', '0')),
+            ("Rank", data.get('Rank', 'N/A')),
+            ("Completed", data.get('TotalGamesCompleted', '0'))
+        ]
+        
+        for label, val in stats:
+            s_box = ctk.CTkFrame(stats_frame, fg_color=C['bg'], corner_radius=10)
+            s_box.pack(side='left', padx=5, fill='x', expand=True)
+            ctk.CTkLabel(s_box, text=label, font=('Arial', 10), text_color=C['dim']).pack(pady=(5, 0))
+            ctk.CTkLabel(s_box, text=val, font=('Arial', 14, 'bold'), text_color='white').pack(pady=(0, 5))
 
     def show_game_details(self, game):
         self.hide_all()
@@ -935,7 +1036,6 @@ class UltimateApp(ctk.CTk):
             else: ctk_img = self.console_icons.get(game['console'])
             btn = ctk.CTkButton(card, text=f"\n{game['name'][:20]}...", image=ctk_img, compound='top', fg_color='transparent', hover_color=C['card'], text_color='white', font=('Arial', 11), command=lambda g=game: self.show_game_details(g))
             btn.pack(fill='both', expand=True, padx=5, pady=5)
-            # Hover Tooltip
             clean_name = game['name'].split('(')[0].split('[')[0].strip()
             btn.bind("<Enter>", lambda e, n=clean_name: self.on_hover_enter(e, n))
             btn.bind("<Leave>", self.on_hover_leave)
@@ -989,11 +1089,27 @@ class UltimateApp(ctk.CTk):
         if self.tooltip_window: self.tooltip_window.destroy()
         self.tooltip_window = GameTooltip(self, title, details, x, y)
 
+    def toggle_pause(self):
+        if self.is_downloading:
+            if not self.is_paused:
+                self.is_paused = True
+                self.btn_pause.configure(text="Resume Download", fg_color=C['success'], text_color='black')
+                self.log("⏸ DOWNLOAD PAUSED")
+            else:
+                self.is_paused = False
+                self.btn_pause.configure(text="Pause Download", fg_color=C['card'], text_color='white')
+                self.log("▶ RESUMING...")
+
     def cancel_current(self):
         if self.is_downloading:
             self.cancel_download = True
-            self.btn_cancel.configure(state='disabled', text='Stopping...')
-            self.log("⚠ CANCELLATION REQUESTED...")
+            self.pending_stage_queue = [] 
+            self.download_list = []
+            
+            self.btn_stop.configure(state='disabled', text='Stopping...')
+            self.log("🛑 STOPPING DOWNLOAD & WIPING ALL QUEUES...")
+            self.update_batch_labels()
+            self.after(0, self.render_queue_list)
 
     def open_twitch_site(self):
         webbrowser.open("https://dev.twitch.tv/console")
@@ -1002,7 +1118,6 @@ class UltimateApp(ctk.CTk):
         for widget in self.settings_widgets: widget.destroy()
         self.settings_widgets = []
         
-        # --- APP SETTINGS (Moved to Top) ---
         theme_row = ctk.CTkFrame(self.settings_scroll, fg_color='transparent')
         theme_row.pack(fill='x', pady=10)
         self.settings_widgets.append(theme_row)
@@ -1024,6 +1139,49 @@ class UltimateApp(ctk.CTk):
         self.default_region_var = ctk.StringVar(value=current_region)
         region_dropdown = ctk.CTkOptionMenu(region_row, variable=self.default_region_var, values=['All Regions', 'USA', 'Europe', 'Japan', 'World'], command=self.change_default_region, fg_color=C['bg'], button_color=C['cyan'], button_hover_color=C['pink'], text_color='white', corner_radius=20)
         region_dropdown.pack(side='left', padx=10)
+
+        # New: Font Size row
+        font_row = ctk.CTkFrame(self.settings_scroll, fg_color='transparent')
+        font_row.pack(fill='x', pady=10)
+        self.settings_widgets.append(font_row)
+        lbl_font = ctk.CTkLabel(font_row, text="BROWSER TEXT SIZE", width=150, anchor='w', font=('Arial', 13, 'bold'), text_color=C['cyan'])
+        lbl_font.pack(side='left', padx=10)
+        
+        self.font_size_var = tk.IntVar(value=self.folder_mappings.get('font_size', 12))
+        self.font_slider = ctk.CTkSlider(font_row, from_=10, to=24, number_of_steps=14, variable=self.font_size_var, command=self.update_font_size)
+        self.font_slider.pack(side='left', padx=10, fill='x', expand=True)
+        self.lbl_font_val = ctk.CTkLabel(font_row, text=str(self.font_size_var.get()), width=30)
+        self.lbl_font_val.pack(side='left', padx=5)
+
+        notif_row = ctk.CTkFrame(self.settings_scroll, fg_color='transparent')
+        notif_row.pack(fill='x', pady=10)
+        self.settings_widgets.append(notif_row)
+        lbl_notif = ctk.CTkLabel(notif_row, text="FINISH CHIME", width=150, anchor='w', font=('Arial', 13, 'bold'), text_color=C['cyan'])
+        lbl_notif.pack(side='left', padx=10)
+        notif_enabled = self.folder_mappings.get('notif_sound', True)
+        self.notif_var = tk.BooleanVar(value=notif_enabled)
+        notif_switch = ctk.CTkSwitch(notif_row, text="", variable=self.notif_var, command=self.toggle_notif_sound, progress_color=C['cyan'])
+        notif_switch.pack(side='left', padx=10)
+
+        demo_row = ctk.CTkFrame(self.settings_scroll, fg_color='transparent')
+        demo_row.pack(fill='x', pady=10)
+        self.settings_widgets.append(demo_row)
+        lbl_demo = ctk.CTkLabel(demo_row, text="FILTER DEMOS", width=150, anchor='w', font=('Arial', 13, 'bold'), text_color=C['cyan'])
+        lbl_demo.pack(side='left', padx=10)
+        demo_filtered = self.folder_mappings.get('filter_demos', False)
+        self.demo_var = tk.BooleanVar(value=demo_filtered)
+        demo_switch = ctk.CTkSwitch(demo_row, text="", variable=self.demo_var, command=self.toggle_demo_filter, progress_color=C['cyan'])
+        demo_switch.pack(side='left', padx=10)
+
+        rev_row = ctk.CTkFrame(self.settings_scroll, fg_color='transparent')
+        rev_row.pack(fill='x', pady=10)
+        self.settings_widgets.append(rev_row)
+        lbl_rev = ctk.CTkLabel(rev_row, text="FILTER REVISIONS", width=150, anchor='w', font=('Arial', 13, 'bold'), text_color=C['cyan'])
+        lbl_rev.pack(side='left', padx=10)
+        rev_filtered = self.folder_mappings.get('filter_revs', False)
+        self.rev_var = tk.BooleanVar(value=rev_filtered)
+        rev_switch = ctk.CTkSwitch(rev_row, text="", variable=self.rev_var, command=self.toggle_rev_filter, progress_color=C['cyan'])
+        rev_switch.pack(side='left', padx=10)
 
         sep1 = ctk.CTkFrame(self.settings_scroll, fg_color=C['dim'], height=1)
         sep1.pack(fill='x', pady=10, padx=10)
@@ -1053,12 +1211,12 @@ class UltimateApp(ctk.CTk):
         sep2.pack(fill='x', pady=10, padx=10)
         self.settings_widgets.append(sep2)
 
-        # --- TWITCH INTEGRATION (Moved to Bottom) ---
+        # TWITCH SECTION
         twitch_header = ctk.CTkLabel(self.settings_scroll, text="TWITCH / IGDB API (BOX ART & INFO)", font=('Arial', 14, 'bold'), text_color=C['cyan'])
         twitch_header.pack(fill='x', pady=(10, 5))
         self.settings_widgets.append(twitch_header)
 
-        expl = ctk.CTkLabel(self.settings_scroll, text="Integrate with IGDB to automatically download box art and show game details (Genre, Dev, Release Date) on hover.", text_color=C['dim'], font=('Arial', 12))
+        expl = ctk.CTkLabel(self.settings_scroll, text="Integrate with IGDB to automatically download box art and show game details.", text_color=C['dim'], font=('Arial', 12))
         expl.pack(pady=(0, 10))
         self.settings_widgets.append(expl)
         
@@ -1082,21 +1240,66 @@ class UltimateApp(ctk.CTk):
         btn_save_twitch.pack(pady=10)
         self.settings_widgets.append(btn_save_twitch)
 
-        help_row = ctk.CTkFrame(self.settings_scroll, fg_color='transparent')
-        help_row.pack(fill='x', pady=(10, 0))
-        self.settings_widgets.append(help_row)
-        ctk.CTkLabel(help_row, text="Don't have keys?", text_color=C['dim'], font=('Arial', 12)).pack(side='left', padx=10)
-        ctk.CTkButton(help_row, text="Open Twitch Developer Console ↗", height=24, fg_color=C['card'], hover_color=C['dim'], command=self.open_twitch_site).pack(side='left', padx=5)
-        
         help_frame = ctk.CTkFrame(self.settings_scroll, fg_color=C['card'])
         help_frame.pack(fill='x', pady=10, padx=10)
         self.settings_widgets.append(help_frame)
-        ctk.CTkLabel(help_frame, text="How to get keys:", font=('Arial', 12, 'bold'), text_color=C['cyan']).pack(anchor='w', padx=10, pady=(10,5))
-        steps = ["1. Click the button above to open the Twitch Console.", "2. Click 'Register Your Application'.", "3. Name: Any (e.g. MyriFetch). OAuth Redirect: http://localhost", "4. Category: Game Integration. Click 'Create'.", "5. Click 'Manage'. Copy Client ID. Click 'New Secret' for Secret."]
-        for step in steps:
-            ctk.CTkLabel(help_frame, text=step, font=('Arial', 11), text_color='white', anchor='w').pack(anchor='w', padx=15, pady=1)
-        
-        for w in self.settings_widgets: pass
+        ctk.CTkLabel(help_frame, text="How to get Twitch keys:", font=('Arial', 12, 'bold'), text_color=C['cyan']).pack(anchor='w', padx=10, pady=(10,5))
+        t_steps = ["1. Visit dev.twitch.tv/console", "2. Register your application (OAuth: http://localhost)", "3. Category: Game Integration", "4. Copy Client ID and generate a Client Secret."]
+        for s in t_steps: ctk.CTkLabel(help_frame, text=s, font=('Arial', 11), anchor='w').pack(anchor='w', padx=15)
+
+        # RETROACHIEVEMENTS SECTION
+        ra_header = ctk.CTkLabel(self.settings_scroll, text="RETROACHIEVEMENTS API", font=('Arial', 14, 'bold'), text_color=C['cyan'])
+        ra_header.pack(fill='x', pady=(20, 5))
+        self.settings_widgets.append(ra_header)
+
+        row_ra_user = ctk.CTkFrame(self.settings_scroll, fg_color='transparent')
+        row_ra_user.pack(fill='x', pady=2)
+        self.settings_widgets.append(row_ra_user)
+        ctk.CTkLabel(row_ra_user, text="Username:", width=100, anchor='w').pack(side='left', padx=10)
+        self.entry_ra_user = ctk.CTkEntry(row_ra_user, fg_color=C['bg'], border_color=C['dim'])
+        self.entry_ra_user.insert(0, self.folder_mappings.get('ra_user', ''))
+        self.entry_ra_user.pack(side='left', fill='x', expand=True, padx=10)
+
+        row_ra_key = ctk.CTkFrame(self.settings_scroll, fg_color='transparent')
+        row_ra_key.pack(fill='x', pady=2)
+        self.settings_widgets.append(row_ra_key)
+        ctk.CTkLabel(row_ra_key, text="API Key:", width=100, anchor='w').pack(side='left', padx=10)
+        self.entry_ra_key = ctk.CTkEntry(row_ra_key, fg_color=C['bg'], border_color=C['dim'], show="*")
+        self.entry_ra_key.insert(0, self.folder_mappings.get('ra_key', ''))
+        self.entry_ra_key.pack(side='left', fill='x', expand=True, padx=10)
+
+        btn_save_ra = ctk.CTkButton(self.settings_scroll, text="Save RetroAchievements Keys", fg_color=C['cyan'], text_color='black', command=self.save_ra_creds)
+        btn_save_ra.pack(pady=10)
+        self.settings_widgets.append(btn_save_ra)
+
+        ra_help = ctk.CTkFrame(self.settings_scroll, fg_color=C['card'])
+        ra_help.pack(fill='x', pady=10, padx=10)
+        self.settings_widgets.append(ra_help)
+        ctk.CTkLabel(ra_help, text="How to get RA key:", font=('Arial', 12, 'bold'), text_color=C['cyan']).pack(anchor='w', padx=10, pady=(10,5))
+        ra_steps = ["1. Log in to RetroAchievements.org", "2. Go to My Pages > Settings", "3. Locate 'Web API Key' near the bottom of the page", "4. Copy and paste it here."]
+        for s in ra_steps: ctk.CTkLabel(ra_help, text=s, font=('Arial', 11), anchor='w').pack(anchor='w', padx=15)
+
+    def toggle_notif_sound(self):
+        self.folder_mappings['notif_sound'] = self.notif_var.get()
+        self.save_config()
+
+    def toggle_demo_filter(self):
+        self.folder_mappings['filter_demos'] = self.demo_var.get()
+        self.save_config()
+        self.filter_list()
+
+    def toggle_rev_filter(self):
+        self.folder_mappings['filter_revs'] = self.rev_var.get()
+        self.save_config()
+        self.filter_list()
+
+    def update_font_size(self, value):
+        val = int(value)
+        self.lbl_font_val.configure(text=str(val))
+        self.folder_mappings['font_size'] = val
+        self.save_config()
+        if self.frame_browser.winfo_viewable():
+            self.render_page()
 
     def clear_saved_folders(self):
         confirm = CustomPopup(self, "Confirm Reset", "Are you sure you want to clear all saved download locations?", ["Yes", "No"])
@@ -1143,6 +1346,14 @@ class UltimateApp(ctk.CTk):
         if self.twitch.authenticate(): CustomPopup(self, "Success", "Twitch Authentication Successful!", ["OK"])
         else: CustomPopup(self, "Failed", "Could not authenticate.\nCheck your Client ID and Secret.", ["OK"])
 
+    def save_ra_creds(self):
+        self.folder_mappings['ra_user'] = self.entry_ra_user.get().strip()
+        self.folder_mappings['ra_key'] = self.entry_ra_key.get().strip()
+        self.save_config()
+        self.ra.username = self.entry_ra_user.get().strip()
+        self.ra.api_key = self.entry_ra_key.get().strip()
+        CustomPopup(self, "Success", "RetroAchievements keys saved.", ["OK"])
+
     def bind_scroll(self, widget, target_frame):
         widget.bind("<Button-4>", lambda e, t=target_frame: self._on_mouse_scroll(e, t, -1))
         widget.bind("<Button-5>", lambda e, t=target_frame: self._on_mouse_scroll(e, t, 1))
@@ -1161,7 +1372,6 @@ class UltimateApp(ctk.CTk):
                 if 'myrient.erista.me' not in target:
                     req_headers.pop('Referer', None)
                     req_headers.pop('Origin', None)
-                # Removed the call that updates version label to "Loading..."
                 self.net_log(f"Listing: {target[:20]}...")
                 clean_path = unquote(target)
                 url = BASE_URL + clean_path
@@ -1191,7 +1401,6 @@ class UltimateApp(ctk.CTk):
                 self.after(0, self.filter_list)
                 self.after(0, self.update_map_btn)
                 self.after(0, self.update_storage_stats)
-                # Version text is now static, so removed the update here
                 self.net_log("Idle")
             except Exception as e:
                 self.after(0, self.hide_loader)
@@ -1203,24 +1412,31 @@ class UltimateApp(ctk.CTk):
         search = self.search_var.get().lower()
         region = self.region_var.get().lower()
         ownership = self.status_var.get().lower()
+        filter_demos = self.folder_mappings.get('filter_demos', False)
+        filter_revs = self.folder_mappings.get('filter_revs', False)
         local_path = self.folder_mappings.get(self.current_path)
+        
         filtered = []
         for i in self.file_cache:
             name_lower = i['name'].lower()
             if search and search not in name_lower: continue
-            if i['type'] != 'dir' and region != 'all regions':
-                if region not in name_lower: continue
-            if i['type'] != 'dir' and ownership != 'all status':
-                is_owned = False
-                if local_path and os.path.exists(os.path.join(local_path, i['name'])): is_owned = True
-                if ownership == 'missing only' and is_owned: continue
-                if ownership == 'owned only' and not is_owned: continue
+            if i['type'] != 'dir':
+                if region != 'all regions' and region not in name_lower: continue
+                if filter_demos and ("(demo)" in name_lower or " demo" in name_lower): continue
+                if filter_revs and ("(rev " in name_lower or " rev " in name_lower): continue
+                
+                if ownership != 'all status':
+                    is_owned = False
+                    if local_path and os.path.exists(os.path.join(local_path, i['name'])): is_owned = True
+                    if ownership == 'missing only' and is_owned: continue
+                    if ownership == 'owned only' and not is_owned: continue
             filtered.append(i)
+        
         self.filtered_cache = filtered
         self.current_page = 0
         self.render_page()
         item_count = len([x for x in self.filtered_cache if x['type'] != 'dir'])
-        self.btn_dl_all.configure(text=f"⬇ Download All [{item_count}]")
+        self.btn_dl_all.configure(text=f"⬇ Download All Listed [{item_count}]")
 
     def render_page(self):
         self.hide_loader()
@@ -1241,13 +1457,16 @@ class UltimateApp(ctk.CTk):
         self.lbl_page.configure(text=f"Page {self.current_page + 1} / {total_pages}")
         self.btn_prev.configure(state='normal' if self.current_page > 0 else 'disabled')
         self.btn_next.configure(state='normal' if end < len(sorted_items) else 'disabled')
+        
+        current_font_size = self.folder_mappings.get('font_size', 12)
+        
         for item in page_items:
             row = ctk.CTkFrame(self.list_frame, fg_color='transparent')
             row.pack(fill='x', pady=2)
             self.browser_widgets.append(row)
             self.bind_scroll(row, self.list_frame)
             if item['type'] == 'dir':
-                btn = ctk.CTkButton(row, text=f"📁 {item['name']}", fg_color='transparent', anchor='w', hover_color=C['pink'], command=lambda href=item['href']: self.refresh_dir(self.current_path + href))
+                btn = ctk.CTkButton(row, text=f"📁 {item['name']}", font=('Arial', current_font_size), fg_color='transparent', anchor='w', hover_color=C['pink'], command=lambda href=item['href']: self.refresh_dir(self.current_path + href))
                 btn.pack(fill='x')
                 self.bind_scroll(btn, self.list_frame)
             else:
@@ -1256,76 +1475,22 @@ class UltimateApp(ctk.CTk):
                 var = ctk.IntVar()
                 text_col = C['success'] if is_owned else 'white'
                 display_text = f"✔ {item['name']}" if is_owned else item['name']
-                chk = ctk.CTkCheckBox(row, text=display_text, variable=var, font=('Arial', 12), text_color=text_col, fg_color=C['cyan'], hover_color=C['pink'])
+                chk = ctk.CTkCheckBox(row, text=display_text, variable=var, font=('Arial', current_font_size), text_color=text_col, fg_color=C['cyan'], hover_color=C['pink'], command=self.update_selection_counter)
                 chk.pack(side='left')
                 self.bind_scroll(chk, self.list_frame)
                 self.checkboxes.append((var, item['name'], item['href']))
-                lbl = ctk.CTkLabel(row, text=item['size'], text_color=C['dim'])
+                lbl = ctk.CTkLabel(row, text=item['size'], font=('Arial', current_font_size), text_color=C['dim'])
                 lbl.pack(side='right', padx=10)
                 self.bind_scroll(lbl, self.list_frame)
                 
-                # --- HOVER EVENTS ---
-                # Clean name for cache key
                 clean_name = item['name'].split('(')[0].split('[')[0].strip()
-                
-                # Bind hover to the whole row and children
                 for w in [row, chk, lbl]:
                     w.bind("<Enter>", lambda e, n=clean_name: self.on_hover_enter(e, n))
                     w.bind("<Leave>", self.on_hover_leave)
 
-    def on_hover_enter(self, event, game_name):
-        if not self.twitch.client_id: return # No keys, no tooltip
-        if self.tooltip_job: self.after_cancel(self.tooltip_job)
-        self.tooltip_job = self.after(600, lambda: self.fetch_and_show_tooltip(game_name, event))
-
-    def on_hover_leave(self, event):
-        if self.tooltip_job: self.after_cancel(self.tooltip_job)
-        self.tooltip_job = None
-        if self.tooltip_window:
-            self.tooltip_window.destroy()
-            self.tooltip_window = None
-
-    def fetch_and_show_tooltip(self, game_name, event):
-        # 1. Check Cache
-        if game_name in self.game_metadata_cache:
-            self.show_tooltip_window(game_name, self.game_metadata_cache[game_name])
-            return
-
-        # 2. Fetch in background
-        def _fetch():
-            data = self.twitch.search_game(game_name)
-            if not data:
-                self.game_metadata_cache[game_name] = None
-                return
-            
-            # Format Data
-            details = {}
-            if 'first_release_date' in data:
-                ts = data['first_release_date']
-                details['Released'] = datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
-            
-            if 'genres' in data:
-                genres = [g['name'] for g in data['genres']]
-                details['Genre'] = ", ".join(genres[:2]) # Top 2
-            
-            if 'involved_companies' in data:
-                for comp in data['involved_companies']:
-                    if comp.get('company'):
-                        details['Developer'] = comp['company']['name']
-                        break # Just take the first one
-            
-            self.game_metadata_cache[game_name] = details
-            
-            # Update UI on main thread
-            self.after(0, lambda: self.show_tooltip_window(game_name, details))
-
-        threading.Thread(target=_fetch, daemon=True).start()
-
-    def show_tooltip_window(self, title, details):
-        if not details: return 
-        x, y = self.winfo_pointerx(), self.winfo_pointery()
-        if self.tooltip_window: self.tooltip_window.destroy()
-        self.tooltip_window = GameTooltip(self, title, details, x, y)
+    def update_selection_counter(self):
+        count = sum(1 for v, n, h in self.checkboxes if v.get() == 1)
+        self.btn_dl.configure(text=f"DOWNLOAD SELECTED [{count}]")
 
     def prev_page(self):
         if self.current_page > 0:
@@ -1355,7 +1520,6 @@ class UltimateApp(ctk.CTk):
         browser = ThemedDirBrowser(self, title="Select Download Folder")
         d = browser.result
         if d:
-            # Auto-create subfolder
             final_path = self.apply_folder_structure(d, self.current_path)
             self.folder_mappings[self.current_path] = final_path
             self.save_config()
@@ -1372,20 +1536,16 @@ class UltimateApp(ctk.CTk):
         else: subprocess.Popen(["xdg-open", path])
 
     def launch_game_folder(self, game_path):
-        """Opens the OS file explorer at the location of the specific game file."""
         if not game_path or not os.path.exists(game_path):
             CustomPopup(self, "Error", "File no longer exists at this location.", ["OK"])
             return
-            
         folder_path = os.path.dirname(os.path.abspath(game_path))
-        
         try:
             if platform.system() == "Windows":
-                # normpath handles slashes, /select, highlights the file
                 subprocess.run(['explorer', '/select,', os.path.normpath(game_path)])
-            elif platform.system() == "Darwin": # macOS
+            elif platform.system() == "Darwin":
                 subprocess.Popen(["open", "-R", game_path])
-            else: # Linux
+            else:
                 subprocess.Popen(["xdg-open", folder_path])
         except Exception as e:
             CustomPopup(self, "Error", f"Could not open folder: {e}", ["OK"])
@@ -1417,6 +1577,8 @@ class UltimateApp(ctk.CTk):
         if targets: self._queue_items(targets)
 
     def add_all_to_queue(self):
+        if not self.filtered_cache:
+            return
         targets = []
         for item in self.filtered_cache:
             if item['type'] != 'dir': targets.append((item['name'], item['href']))
@@ -1431,13 +1593,8 @@ class UltimateApp(ctk.CTk):
             browser = ThemedDirBrowser(self, title="Select Download Folder")
             local_dir = browser.result
             if not local_dir: return
-            
-            # --- Auto-create subfolder logic ---
-            # Automatically apply the subfolder to the selected download path
             final_path = self.apply_folder_structure(local_dir, self.current_path)
-            local_dir = final_path # Update local_dir to point to the new subfolder
-            
-            # Ask to save this *new subfolder path* as default
+            local_dir = final_path
             if self.current_path:
                 ask_save = CustomPopup(self, "Save Location?", 
                                      f"Do you want to save this folder as the default for this console?\n\n{final_path}", 
@@ -1447,11 +1604,9 @@ class UltimateApp(ctk.CTk):
                     self.save_config()
                     self.update_map_btn()
                     self.update_storage_stats()
-            # -----------------------------------
 
         if not os.path.exists(local_dir):
-            try:
-                os.makedirs(local_dir)
+            try: os.makedirs(local_dir)
             except Exception as e:
                 CustomPopup(self, "Error", f"Could not create folder:\n{e}", ["OK"])
                 return
@@ -1460,58 +1615,54 @@ class UltimateApp(ctk.CTk):
             CustomPopup(self, "Permission Error", f"Cannot write to:\n{local_dir}", ["OK"])
             return
 
+        cache_map = {item['name']: item for item in self.file_cache}
+        
         for name, href in targets:
-            clean_path_for_url = self.current_path + href
-            url = BASE_URL + clean_path_for_url
-            
-            # --- NEW: Create Game Subfolder ---
+            url = BASE_URL + self.current_path + href
             game_clean_name = os.path.splitext(name)[0]
             game_folder_path = os.path.join(local_dir, game_clean_name)
             
-            # Create subfolder for game if needed
-            if not os.path.exists(game_folder_path):
-                try: os.makedirs(game_folder_path)
-                except: pass # Will be created by downloader later
-            
-            dest = os.path.join(game_folder_path, name)
-            # ----------------------------------
-            
             size_mb = 0
-            for i in self.file_cache:
-                if i['name'] == name:
-                    try:
-                        raw_size = i['size']
-                        clean_str = ''.join(c for c in raw_size if c.isdigit() or c == '.')
-                        if clean_str:
-                            val = float(clean_str)
-                            if 'G' in raw_size: size_mb = val * 1024
-                            elif 'M' in raw_size: size_mb = val
-                            elif 'K' in raw_size: size_mb = val / 1024
-                    except:
-                        size_mb = 0
-                    break
-
-            self.download_list.append({'url': url, 'path': dest, 'name': name, 'size_mb': size_mb})
-            self.log(f"QUEUED: {name}")
-
+            if name in cache_map:
+                try:
+                    raw_size = cache_map[name]['size']
+                    clean_str = ''.join(c for c in raw_size if c.isdigit() or c == '.')
+                    if clean_str:
+                        val = float(clean_str)
+                        if 'G' in raw_size: size_mb = val * 1024
+                        elif 'M' in raw_size: size_mb = val
+                        elif 'K' in raw_size: size_mb = val / 1024
+                except: size_mb = 0
+                
+            self.pending_stage_queue.append({'url': url, 'path': os.path.join(game_folder_path, name), 'name': name, 'size_mb': size_mb, 'folder': game_folder_path})
+            
         self.show_queue()
-        self.render_queue_list()
+        self.update_batch_labels()
+        
         if not self.is_downloading: threading.Thread(target=self.process_queue, daemon=True).start()
+
+    def update_batch_labels(self):
+        total_remaining = len(self.pending_stage_queue) + len(self.download_list)
+        batches_remaining = (len(self.pending_stage_queue) + 99) // 100
+        self.after(0, lambda: self.lbl_total_left.configure(text=f"Total Left: {total_remaining}"))
+        self.after(0, lambda: self.lbl_batches_left.configure(text=f"Batches Left: {batches_remaining}"))
 
     def remove_from_queue(self, index):
         if 0 <= index < len(self.download_list):
             item = self.download_list.pop(index)
             self.log(f"REMOVED: {item['name']}")
             self.render_queue_list()
+            self.update_batch_labels()
 
     def render_queue_list(self):
         for widget in self.queue_widgets: widget.destroy()
         self.queue_widgets = []
-        if not self.download_list:
+        if not self.download_list and not self.pending_stage_queue:
             lbl = ctk.CTkLabel(self.queue_list_frame, text="Queue is empty", text_color=C['dim'])
             lbl.pack(pady=10)
             self.queue_widgets.append(lbl)
             return
+            
         for i, item in enumerate(self.download_list):
             row = ctk.CTkFrame(self.queue_list_frame, fg_color='transparent')
             row.pack(fill='x', pady=2)
@@ -1529,6 +1680,7 @@ class UltimateApp(ctk.CTk):
         self.log_box.see('end')
 
     def play_notification(self):
+        if not self.folder_mappings.get('notif_sound', True): return
         if os.name == 'nt' and winsound: winsound.MessageBeep()
         else: print('\a')
 
@@ -1541,6 +1693,8 @@ class UltimateApp(ctk.CTk):
                 r.raise_for_status()
                 with open(fname, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
+                        while self.is_paused and not self.cancel_download:
+                            time.sleep(0.5)
                         if self.cancel_download: break
                         f.write(chunk)
         except Exception as e: pass
@@ -1567,12 +1721,28 @@ class UltimateApp(ctk.CTk):
     def process_queue(self):
         self.is_downloading = True
         self.cancel_download = False
-        self.btn_cancel.configure(state='normal', text="Cancel Download")
+        self.is_paused = False
         
-        while self.download_list and not self.cancel_download:
+        self.btn_pause.configure(state='normal', text="Pause Download", fg_color=C['card'], text_color='white')
+        self.btn_stop.configure(state='normal', text="Stop Download")
+        
+        while (self.download_list or self.pending_stage_queue) and not self.cancel_download:
+            
+            if not self.download_list and self.pending_stage_queue:
+                self.log("📦 LOADING NEXT BATCH (100 items)...")
+                BATCH_SIZE = 100
+                batch = [self.pending_stage_queue.pop(0) for _ in range(min(BATCH_SIZE, len(self.pending_stage_queue)))]
+                self.download_list.extend(batch)
+                self.after(0, self.render_queue_list)
+                self.update_batch_labels()
+
+            if not self.download_list: break 
+
             try:
                 task = self.download_list.pop(0)
+                self.update_batch_labels()
                 self.after(0, self.render_queue_list)
+                
                 self.log(f"HYDRA ACTIVE: {task['name']}")
                 self.net_log(f"DL: {task['name'][:15]}...")
                 
@@ -1581,17 +1751,15 @@ class UltimateApp(ctk.CTk):
                     req_headers.pop('Referer', None)
                     req_headers.pop('Origin', None)
                 
-                # Check Head with fallback
                 try:
                     head = requests.head(task['url'], headers=req_headers, timeout=15, allow_redirects=True)
                     total_length = int(head.headers.get('content-length', 0))
-                except Exception: total_length = 0
+                except: total_length = 0
 
-                # Fallback to menu scraped size if head failed
                 if total_length == 0 and task['size_mb'] > 0:
                     total_length = int(task['size_mb'] * 1024 * 1024)
 
-                save_folder = os.path.dirname(task['path'])
+                save_folder = task['folder']
                 if not os.path.exists(save_folder):
                     try: os.makedirs(save_folder)
                     except: pass
@@ -1618,10 +1786,11 @@ class UltimateApp(ctk.CTk):
                          r.raise_for_status()
                          with open(final_path, 'wb') as f:
                              for chunk in r.iter_content(chunk_size=8192):
+                                 while self.is_paused and not self.cancel_download:
+                                     time.sleep(0.5)
                                  if self.cancel_download: break
                                  f.write(chunk)
                                  self.download_stats['bytes'] += len(chunk)
-                                 
                                  if time.time() - start_t > 0.1:
                                      dl_mb = self.download_stats['bytes']/1024/1024
                                      self.after(0, lambda: self.lbl_speed.configure(text=f"DL: {dl_mb:.1f} MB"))
@@ -1638,15 +1807,14 @@ class UltimateApp(ctk.CTk):
                         t.start()
 
                     while any(t.is_alive() for t in threads) and not self.cancel_download:
-                         if self.cancel_download: break
+                         if self.is_paused:
+                             time.sleep(1)
+                             continue
                          time.sleep(0.5)
                          now = time.time()
-                         
                          current_size = 0
                          for p in parts:
-                             if os.path.exists(p):
-                                 current_size += os.path.getsize(p)
-                         
+                             if os.path.exists(p): current_size += os.path.getsize(p)
                          if now - start_t > 0:
                              speed = current_size / (now - start_t) / 1024 / 1024
                              pct = current_size / total_length if total_length > 0 else 0
@@ -1658,7 +1826,7 @@ class UltimateApp(ctk.CTk):
                     for p in parts:
                         if os.path.exists(p): os.remove(p)
                     if os.path.exists(final_path): os.remove(final_path)
-                    continue
+                    break 
 
                 self.log("Stitching...")
                 if all(os.path.exists(p) for p in parts) and len(parts) > 0:
@@ -1684,8 +1852,11 @@ class UltimateApp(ctk.CTk):
 
         self.is_downloading = False
         self.cancel_download = False
-        self.btn_cancel.configure(state='disabled', text="Cancel Download")
+        self.is_paused = False
+        self.btn_pause.configure(state='disabled', text="Pause Download", fg_color=C['card'], text_color='white')
+        self.btn_stop.configure(state='disabled', text="Stop Download")
         self.progress_bar.set(0)
+        self.update_batch_labels()
         self.after(0, lambda: self.lbl_speed.configure(text="IDLE"))
         self.net_log("Idle")
 
