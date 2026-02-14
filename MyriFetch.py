@@ -363,7 +363,7 @@ class UltimateApp(ctk.CTk):
         super().__init__()
         
         # App Info
-        self.app_version = "1.3.1"
+        self.app_version = "1.4.0"
         self.github_url = "https://github.com/crabbiemike/MyriFetch"
         
         self.title(f"MYRIFETCH v{self.app_version} // ROM MANAGER")
