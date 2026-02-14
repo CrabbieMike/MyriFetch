@@ -21,13 +21,13 @@ MyriFetch is a modern, high-performance ROM manager and downloader designed spec
 * Microsoft Xbox
 * And more via the custom folder browser...
 
-<img width="1102" height="882" alt="Screenshot 2026-02-02 111158" src="[https://github.com/user-attachments/assets/ac5a519b-0044-4183-a2a0-8935d460d5f6](https://github.com/user-attachments/assets/ac5a519b-0044-4183-a2a0-8935d460d5f6)" />
-<img width="1102" height="882" alt="Screenshot 2026-02-02 111212" src="[https://github.com/user-attachments/assets/e565829c-03c2-457e-879f-78f3bb013767](https://github.com/user-attachments/assets/e565829c-03c2-457e-879f-78f3bb013767)" />
-<img width="1102" height="882" alt="Screenshot 2026-02-02 111220" src="[https://github.com/user-attachments/assets/7e4c6303-109d-4616-8e29-85e261e7093c](https://github.com/user-attachments/assets/7e4c6303-109d-4616-8e29-85e261e7093c)" />
-<img width="1102" height="882" alt="Screenshot 2026-02-02 111235" src="[https://github.com/user-attachments/assets/753ccca8-e9f1-497b-8d6a-dc35b33f2e2a](https://github.com/user-attachments/assets/753ccca8-e9f1-497b-8d6a-dc35b33f2e2a)" />
-<img width="1102" height="882" alt="Screenshot 2026-02-02 111436" src="[https://github.com/user-attachments/assets/343d80f5-b627-45b1-b728-51e0c38facf7](https://github.com/user-attachments/assets/343d80f5-b627-45b1-b728-51e0c38facf7)" />
-<img width="1102" height="882" alt="Screenshot 2026-02-02 111443" src="[https://github.com/user-attachments/assets/e77c3620-b7d7-4601-a152-ce24748556f6](https://github.com/user-attachments/assets/e77c3620-b7d7-4601-a152-ce24748556f6)" />
-<img width="1102" height="882" alt="Screenshot 2026-02-02 111452" src="[https://github.com/user-attachments/assets/c06164e5-0f7e-4547-9a67-c19bb7975c6b](https://github.com/user-attachments/assets/c06164e5-0f7e-4547-9a67-c19bb7975c6b)" />
+<img width="1102" height="882" alt="Screenshot 2026-02-14 163818" src="https://github.com/user-attachments/assets/7dfea677-7204-4ffe-bdfb-9f9e58d4e487" />
+<img width="1102" height="882" alt="Screenshot 2026-02-14 163849" src="https://github.com/user-attachments/assets/cc7948ba-8a59-4765-9c18-576fe383f4b2" />
+<img width="1102" height="882" alt="Screenshot 2026-02-14 164026" src="https://github.com/user-attachments/assets/9f3029d6-f60d-4804-a5cc-b354d0aa7b1e" />
+<img width="1102" height="882" alt="Screenshot 2026-02-14 164130" src="https://github.com/user-attachments/assets/944dfa55-5d21-43cb-b7b6-e2f69548f068" />
+<img width="1102" height="882" alt="Screenshot 2026-02-14 164141" src="https://github.com/user-attachments/assets/e1d6be2b-4417-4d70-851b-ab6554f05199" />
+<img width="1102" height="882" alt="Screenshot 2026-02-14 164207" src="https://github.com/user-attachments/assets/f7ab9403-26c5-490c-9b6e-44087a6d0363" />
+<img width="1102" height="882" alt="Screenshot 2026-02-14 164214" src="https://github.com/user-attachments/assets/13a07311-a4d2-4652-bf7c-9353fe42ec32" />
 
 ## 🛠️ Installation & Usage
 
